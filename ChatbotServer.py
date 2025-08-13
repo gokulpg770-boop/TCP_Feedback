@@ -4,6 +4,33 @@ import sys
 import psycopg2
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
+EMAIL_TO   = os.getenv("EMAIL_TO")  # default recipient
+
+def send_email(subject, body, recipient=None):
+    """Send an email notification."""
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_USER
+        msg["To"] = recipient or EMAIL_TO
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, recipient or EMAIL_TO, msg.as_string())
+
+        print(f"✅ Email sent to {recipient or EMAIL_TO}")
+    except Exception as e:
+        print(f"❌ Email sending failed: {e}", file=sys.stderr)
 
 # Load DB credentials
 load_dotenv()
@@ -80,6 +107,49 @@ def list_feedback(limit=None, offset=None) -> dict:
         return {"status": "failure", "error": str(e)}
     finally:
         conn.close()
+
+@mcp.tool
+def add_message_feedback(message_id=None, action=None, description=None, rating=None) -> dict:
+    """Store feedback for a message."""
+    message_id = _arg(message_id, "message_id")
+    action = _arg(action, "action")
+    description = _arg(description, "description")
+    rating = _arg(rating, "rating")
+
+    if not message_id or action not in ("positive", "negative"):
+        return {"status": "failure", "error": "message_id and valid action required"}
+
+    conn = get_conn()
+    if not conn:
+        return {"status": "failure", "error": "Database unavailable"}
+
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO feedback (message_id, action, description, rating) VALUES (%s,%s,%s,%s) RETURNING id",
+                (message_id, action, description, rating)
+            )
+            fb_id = cur.fetchone()[0]
+
+        # Trigger email notification
+        subject = f"New Feedback Received - {action.title()}"
+        body = f"""
+        A new feedback entry has been submitted:
+
+        Message ID: {message_id}
+        Action: {action}
+        Rating: {rating}
+        Description: {description}
+        Feedback ID: {fb_id}
+        """
+        send_email(subject, body)
+
+        return {"status": "success", "feedback_id": fb_id}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+    finally:
+        conn.close()
+
 
 @mcp.tool
 def add_message_feedback(message_id=None, action=None, description=None, rating=None) -> dict:
