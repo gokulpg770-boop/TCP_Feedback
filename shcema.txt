@@ -1,0 +1,3 @@
+#database schema 
+CREATE TABLE messages ( id SERIAL PRIMARY KEY, conversation_id INTEGER NOT NULL, sender VARCHAR(50) NOT NULL, content TEXT NOT NULL ); 
+CREATE TABLE feedback ( id SERIAL PRIMARY KEY, message_id INTEGER NOT NULL REFERENCES messages(id), action VARCHAR(20) NOT NULL, description TEXT, rating INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP );
