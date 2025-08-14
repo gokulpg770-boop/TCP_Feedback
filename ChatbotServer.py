@@ -150,35 +150,6 @@ def add_message_feedback(message_id=None, action=None, description=None, rating=
     finally:
         conn.close()
 
-
-@mcp.tool
-def add_message_feedback(message_id=None, action=None, description=None, rating=None) -> dict:
-    """Store feedback for a message."""
-    message_id = _arg(message_id, "message_id")
-    action = _arg(action, "action")
-    description = _arg(description, "description")
-    rating = _arg(rating, "rating")
-
-    if not message_id or action not in ("positive", "negative"):
-        return {"status": "failure", "error": "message_id and valid action required"}
-
-    conn = get_conn()
-    if not conn:
-        return {"status": "failure", "error": "Database unavailable"}
-
-    try:
-        with conn, conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO feedback (message_id, action, description, rating) VALUES (%s,%s,%s,%s) RETURNING id",
-                (message_id, action, description, rating)
-            )
-            fb_id = cur.fetchone()[0]
-        return {"status": "success", "feedback_id": fb_id}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
-    finally:
-        conn.close()
-
 @mcp.tool
 def add_message(conversation_id=None, sender=None, content=None) -> dict:
     """Store a message and return its ID."""
@@ -206,5 +177,14 @@ def add_message(conversation_id=None, sender=None, content=None) -> dict:
     finally:
         conn.close()
 
+# if __name__ == "__main__":
+#     mcp.run(transport="stdio")
+
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    mcp.run(
+        transport="http",
+        host="0.0.0.0",
+        port=8000,
+        path="/mcp"
+    )
+

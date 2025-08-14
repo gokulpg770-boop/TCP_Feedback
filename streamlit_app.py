@@ -8,13 +8,17 @@ from pathlib import Path
 from fastmcp import Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
+from fastmcp.client.transports import StreamableHttpTransport
 
 load_dotenv()
 
 # Gemini LLM
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
 
-SERVER_PATH = str(Path(__file__).parent / "ChatbotServer.py")
+# SERVER_PATH = str(Path(__file__).parent / "ChatbotServer.py") //stdio transport
+
+#Http server URL for FastMCP
+SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
 
 
 def query_gemini_llm(prompt):
@@ -76,7 +80,8 @@ async def _call_tool_with_fresh_client(tool_name: str, payload: dict, max_retrie
     """
     last_exc = None
     for attempt in range(1, max_retries + 1):
-        client = Client(SERVER_PATH)
+        transport = StreamableHttpTransport(url=SERVER_URL)
+        client = Client(transport)        
         try:
             async with client:
                 res = await client.call_tool(tool_name, payload)
@@ -113,7 +118,7 @@ def run_async(coro):
 
 
 def main():
-    st.title("💬 Gemini Chatbot with Feedback (robust client-per-call)")
+    st.title("💬Chatbot with Feedback")
 
     # session state defaults
     st.session_state.setdefault("user_message_id", None)
@@ -177,7 +182,7 @@ def main():
             "user_message_id": st.session_state.get("user_message_id"),
             "ai_message_id": st.session_state.get("ai_message_id"),
             "last_query": st.session_state.get("last_query"),
-            "server_path": SERVER_PATH,
+            "server_url": SERVER_URL,
         }
     )
 
