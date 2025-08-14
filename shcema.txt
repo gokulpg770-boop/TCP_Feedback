@@ -1,3 +1,16 @@
 #database schema 
 CREATE TABLE messages ( id SERIAL PRIMARY KEY, conversation_id INTEGER NOT NULL, sender VARCHAR(50) NOT NULL, content TEXT NOT NULL ); 
 CREATE TABLE feedback ( id SERIAL PRIMARY KEY, message_id INTEGER NOT NULL REFERENCES messages(id), action VARCHAR(20) NOT NULL, description TEXT, rating INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP );
+#.env
+GOOGLE_API_KEY=AIzaSyBxFH-eJRKiiVwk6Bd6r3oyBSkOEKUZ_0E0Y
+DB_NAME = MCP_FEEDBACK
+DB_USER = postgres
+DB_PASSWORD =mydb123
+DB_HOST = localhost
+DB_PORT = 5432
+# Email
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=gokul.pg.770@gmail.com
+EMAIL_PASS=qbfw aclb sqxq m0iz0a
+EMAIL_TO=aravindrajesh0101@gmail.com
