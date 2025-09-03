@@ -75,7 +75,7 @@ MANDATORY_FIELDS = {
 
 # ===== Node Functions =====
 def show_first_category_sop(state: TicketState) -> TicketState:
-    """Show initial payroll SOP"""
+    """Show initial payroll SOP IMMEDIATELY - no preliminary questions"""
     new_state = dict(state)
     first_category = CATEGORY_OPTIONS[0]
     sop = SOP_DB.get(first_category, "No SOP available.")
@@ -89,7 +89,7 @@ def show_first_category_sop(state: TicketState) -> TicketState:
         )
     })
     
-    logging.info("Showing first SOP")
+    logging.info("Showing Payroll SOP directly - no preliminary questions")
     return new_state
 
 def handle_ticket_decision(state: TicketState) -> TicketState:
@@ -98,13 +98,17 @@ def handle_ticket_decision(state: TicketState) -> TicketState:
     user_response = state.get("user_input", "").strip().lower()
     
     if user_response in ("yes", "y"):
-        new_state["wants_ticket"] = True
-        logging.info("User wants ticket - will ask for confirmation next")
+        new_state.update({
+            "wants_ticket": True,
+            "user_input": ""  # CLEAR INPUT after processing
+        })
+        logging.info("User wants ticket - next step will be category confirmation")
     elif user_response in ("no", "n"):
         new_state.update({
             "wants_ticket": False,
             "conversation_complete": True,
-            "last_message": "👍 Thank you! Have a great day."
+            "last_message": "👍 Thank you! Have a great day.",
+            "user_input": ""  # CLEAR INPUT after processing
         })
         logging.info("User doesn't want ticket - ending conversation")
     else:
@@ -126,10 +130,16 @@ def handle_category_confirmation(state: TicketState) -> TicketState:
     user_response = state.get("user_input", "").strip().lower()
     
     if user_response in ("yes", "y"):
-        new_state["category_confirmed"] = True
+        new_state.update({
+            "category_confirmed": True,
+            "user_input": ""  # CLEAR INPUT after processing
+        })
         logging.info("Category confirmed - will start field collection")
     elif user_response in ("no", "n"):
-        new_state["category_confirmed"] = False
+        new_state.update({
+            "category_confirmed": False,
+            "user_input": ""  # CLEAR INPUT after processing
+        })
         logging.info("Category not confirmed - will show other options")
     else:
         new_state["last_message"] = "Please respond with 'yes' or 'no'."
@@ -158,6 +168,7 @@ def handle_category_selection(state: TicketState) -> TicketState:
             "category": selected,
             "other_categories_shown": False,
             "category_confirmed": None,
+            "user_input": ""  # CLEAR INPUT after processing
         })
         logging.info(f"Selected new category: {selected}")
     else:
@@ -201,7 +212,8 @@ def fill_field(state: TicketState) -> TicketState:
         filled[current_field] = user_input
         new_state.update({
             "mandatory_fields": filled,
-            "current_field": None
+            "current_field": None,
+            "user_input": ""  # CLEAR INPUT after processing
         })
         logging.info(f"Filled field '{current_field}' with value: {user_input}")
     
@@ -238,13 +250,13 @@ def main_router(state: TicketState) -> TicketState:
     """Main router - just passes state through"""
     return state
 
-# ===== FIXED Main Routing Function =====
+# ===== Main Routing Function =====
 def route_main(state: TicketState) -> str:
-    """Main routing function that ensures proper flow sequence"""
+    """Main routing function"""
     
-    logging.info(f"Routing with state: first_sop_shown={state.get('first_sop_shown')}, wants_ticket={state.get('wants_ticket')}, category_confirmed={state.get('category_confirmed')}, other_categories_shown={state.get('other_categories_shown')}")
+    logging.info(f"Routing state: first_sop_shown={state.get('first_sop_shown')}, wants_ticket={state.get('wants_ticket')}, category_confirmed={state.get('category_confirmed')}, other_categories_shown={state.get('other_categories_shown')}, current_field={state.get('current_field')}")
     
-    # Step 1: Show Payroll SOP first
+    # Step 1: ALWAYS show Payroll SOP first - no preliminary questions
     if not state.get('first_sop_shown'):
         return 'show_first_category_sop'
 
@@ -252,38 +264,41 @@ def route_main(state: TicketState) -> str:
     if state.get('first_sop_shown') and state.get('wants_ticket') is None and state.get('user_input'):
         return 'handle_ticket_decision'
 
-    # Step 3: If no ticket wanted, end conversation
+    # Step 3: If no ticket wanted, end
     if state.get('wants_ticket') is False:
         return 'end_conversation'
 
-    # Step 4: CRITICAL - If yes to ticket, ALWAYS ask for confirmation first (not in other categories flow)
-    if (state.get('wants_ticket') is True and 
-        state.get('category_confirmed') is None and 
-        not state.get('other_categories_shown', False)):
-        if state.get('user_input'):
+    # Step 4: After user says YES to ticket, ask for confirmation
+    if state.get('wants_ticket') is True and state.get('category_confirmed') is None:
+        # If we have user input and not in other categories flow, handle confirmation
+        if state.get('user_input') and not state.get('other_categories_shown', False):
             return 'handle_category_confirmation'
-        else:
+        # If no user input and not in other categories flow, ask for confirmation
+        elif not state.get('user_input') and not state.get('other_categories_shown', False):
             return 'ask_category_confirmation'
 
-    # Step 5: If category confirmed, start field collection
+    # Step 5: If category confirmed, do field collection
     if state.get('category_confirmed') is True:
+        # If collecting a specific field and user provided input
         if state.get('current_field') and state.get('user_input'):
             return 'fill_field'
         
-        # Check if all required fields are collected
+        # Check if all fields collected
         category = state.get('category')
         required = MANDATORY_FIELDS.get(category, []) if category else []
         filled = state.get('mandatory_fields', {})
         
+        # If all required fields are filled, create ticket
         if all(field in filled for field in required) and filled:
             if not state.get('ticket_created'):
                 return 'create_ticket'
             else:
                 return 'end_conversation'
+        # Otherwise get next field
         else:
             return 'get_next_field'
 
-    # Step 6: If category not confirmed, show other categories
+    # Step 6: If category not confirmed, show alternatives
     if state.get('category_confirmed') is False and not state.get('other_categories_shown', False):
         return 'show_other_categories'
 
@@ -291,7 +306,7 @@ def route_main(state: TicketState) -> str:
     if state.get('other_categories_shown') and state.get('user_input') and state.get('category_confirmed') is None:
         return 'handle_category_selection'
 
-    # Step 8: After selecting other category, ask for confirmation
+    # Step 8: After selecting other category, ask confirmation
     if (state.get('other_categories_shown') and 
         state.get('category_confirmed') is None and 
         state.get('category') in CATEGORY_OPTIONS[1:]):
@@ -323,7 +338,7 @@ def create_langgraph_app():
     # Set entry point to main router
     builder.set_entry_point("main_router")
     
-    # Use single main router for all routing decisions
+    # Main router handles all routing
     builder.add_conditional_edges(
         "main_router", 
         route_main,
@@ -341,7 +356,7 @@ def create_langgraph_app():
         }
     )
     
-    # All nodes return to main router for next decision (except terminal nodes)
+    # All non-terminal nodes return to main router
     for node in ["show_first_category_sop", "handle_ticket_decision", "ask_category_confirmation",
                  "handle_category_confirmation", "show_other_categories", "handle_category_selection",
                  "get_next_field", "fill_field"]:
@@ -351,7 +366,6 @@ def create_langgraph_app():
     builder.add_edge("create_ticket", END)
     builder.add_edge("end_conversation", END)
     
-    # Compile with memory
     memory = InMemorySaver()
     return builder.compile(checkpointer=memory)
 
@@ -378,7 +392,6 @@ async def chat(request: ChatRequest):
         current_state = langgraph_app.get_state(cfg)
         vals = current_state.values if current_state else {}
         
-        # Show buttons when displaying other categories
         should_show_buttons = bool(
             vals.get("other_categories_shown") and 
             vals.get("category_confirmed") is None
@@ -398,10 +411,12 @@ async def chat(request: ChatRequest):
 
 @app.post("/new_conversation", response_model=NewConversationResponse)
 async def new_conversation():
+    """Start new conversation - directly show Payroll SOP"""
     try:
         thread_id = str(uuid.uuid4())
         cfg = {"configurable": {"thread_id": thread_id}}
         
+        # Start with completely empty state - this will trigger show_first_category_sop
         response = langgraph_app.invoke({}, config=cfg)
         
         return NewConversationResponse(
