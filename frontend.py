@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-import uuid
-from typing import Dict, Any
 
 API_BASE_URL = "http://localhost:8000"
 
@@ -10,6 +8,7 @@ def main():
     st.title("🎫 AI Support Ticket System")
     st.markdown("---")
 
+    # Initialize session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "thread_id" not in st.session_state:
@@ -19,18 +18,7 @@ def main():
     if "last_response" not in st.session_state:
         st.session_state.last_response = None
 
-    render_sidebar()
-
-    chat_container = st.container()
-    display_chat_history(chat_container)
-
-    if not st.session_state.conversation_started:
-        start_new_conversation()
-
-    if st.session_state.thread_id:
-        handle_conversation_interface()
-
-def render_sidebar():
+    # Sidebar
     with st.sidebar:
         st.header("🎛️ Controls")
         if st.button("🔄 New Conversation", type="primary"):
@@ -50,12 +38,22 @@ def render_sidebar():
         st.markdown("---")
         st.markdown("### 📋 Flow")
         st.markdown("""
-        1) Show Payroll SOP → "Raise ticket?" (yes/no)  
-        2) If yes → "Confirm Payroll?" (yes/no)  
-           - Yes → Collect attributes → Create ticket  
-           - No → Show other 9 categories → Confirm → Collect → Create  
-        3) If no → Exit
+        1) **Payroll SOP** → "Raise ticket?" (yes/no)
+        2) **If yes** → "Confirm Payroll?" (yes/no)
+           - **Yes** → Collect fields → Create ticket
+           - **No** → Show other categories → Confirm → Create
+        3) **If no** → Exit
         """)
+
+    # Main interface
+    chat_container = st.container()
+    display_chat_history(chat_container)
+
+    if not st.session_state.conversation_started:
+        start_new_conversation()
+
+    if st.session_state.thread_id:
+        handle_conversation_interface()
 
 def display_chat_history(chat_container):
     with chat_container:
@@ -64,27 +62,38 @@ def display_chat_history(chat_container):
                 st.markdown(message["content"])
 
 def start_new_conversation():
+    # Clear previous state
+    st.session_state.messages = []
+    st.session_state.thread_id = None
+    st.session_state.conversation_started = False
+    st.session_state.last_response = None
+    
     with st.spinner("Starting new conversation..."):
         try:
-            response = requests.post(f"{API_BASE_URL}/new_conversation")
+            response = requests.post(f"{API_BASE_URL}/new_conversation", timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 st.session_state.thread_id = data["thread_id"]
                 st.session_state.messages = [{"role": "assistant", "content": data["message"]}]
                 st.session_state.conversation_started = True
-                st.session_state.last_response = data
+                st.session_state.last_response = {"message": data["message"], "should_show_buttons": False}
                 st.rerun()
             else:
-                st.error("Failed to start conversation")
+                try:
+                    err = response.json()
+                    st.error(f"Failed to start: {err.get('detail', response.text)}")
+                except:
+                    st.error(f"Failed to start: {response.status_code}")
         except Exception as e:
             st.error(f"Connection error: {str(e)}")
 
 def handle_conversation_interface():
     data = st.session_state.last_response
+    
     if data and data.get("should_show_buttons"):
         display_option_buttons(data.get("remaining_options", []))
     elif data and data.get("conversation_complete"):
-        st.success("✅ Conversation completed! Click 'New Conversation' to start again.")
+        st.success("✅ Conversation completed!")
         if st.button("🔄 Start New Conversation", type="primary"):
             start_new_conversation()
     else:
@@ -92,11 +101,14 @@ def handle_conversation_interface():
 
 def display_option_buttons(remaining_options):
     st.markdown("### 📝 Select a Category:")
+    
     for i in range(0, len(remaining_options), 3):
         cols = st.columns(3)
         for j, option in enumerate(remaining_options[i:i+3]):
             with cols[j]:
-                if st.button(f"🎯 {option.title()}", key=f"btn_{option}_{st.session_state.thread_id}", use_container_width=True):
+                if st.button(f"🎯 {option.title()}", 
+                           key=f"btn_{option}_{st.session_state.thread_id}", 
+                           use_container_width=True):
                     process_user_input(f"Selected: {option.title()}", option)
 
 def handle_chat_input():
@@ -113,20 +125,24 @@ def process_user_input(display_text: str, actual_input: str):
                 json={"thread_id": st.session_state.thread_id, "user_input": actual_input},
                 timeout=15
             )
+            
             if response.status_code == 200:
                 data = response.json()
                 st.session_state.last_response = data
                 bot_message = data.get("message", "I'm sorry, I didn't understand that.")
                 st.session_state.messages.append({"role": "assistant", "content": bot_message})
+                
                 if data.get("conversation_complete"):
                     st.balloons()
+                
                 st.rerun()
             else:
                 try:
                     err = response.json()
-                    st.error(f"Failed to process message: {err.get('detail', response.text)}")
-                except Exception:
+                    st.error(f"Failed to process: {err.get('detail', response.text)}")
+                except:
                     st.error("Failed to process message")
+                
         except Exception as e:
             error_msg = f"❌ Connection error: {str(e)}"
             st.error(error_msg)
