@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Support Ticket System</title>
+    <link rel="stylesheet" href="static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-ticket-alt"></i> AI Support Ticket System</h1>
+            <p>Get help with your workplace issues through our intelligent assistant</p>
+        </header>
+
+        <!-- Category Selection Screen -->
+        <div id="category-screen" class="screen active">
+            <div class="card">
+                <h2>Select Support Category</h2>
+                <p>Choose the category that best describes your issue:</p>
+                <div id="category-buttons" class="category-grid">
+                    <!-- Categories will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Screen -->
+        <div id="chat-screen" class="screen">
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h3 id="selected-category">Support Chat</h3>
+                    <button id="restart-btn" class="btn btn-secondary">
+                        <i class="fas fa-redo"></i> Start Over
+                    </button>
+                </div>
+                <div id="chat-messages" class="chat-messages">
+                    <!-- Messages will appear here -->
+                </div>
+                <div class="chat-input-container">
+                    <div class="input-group">
+                        <input type="text" id="message-input" placeholder="Type your message..." maxlength="500">
+                        <button id="send-btn" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="input-info">
+                        <small>Press Enter to send</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Screen -->
+        <div id="success-screen" class="screen">
+            <div class="card success-card">
+                <div class="success-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h2>Ticket Created Successfully!</h2>
+                <div id="success-message"></div>
+                <div class="action-buttons">
+                    <button id="new-ticket-btn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Another Ticket
+                    </button>
+                    <button id="close-btn" class="btn btn-secondary">
+                        <i class="fas fa-home"></i> Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+    </div>
+
+    <script src="static/script.js"></script>
+</body>
+</html>
