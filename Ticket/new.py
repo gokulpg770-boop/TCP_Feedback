@@ -88,10 +88,9 @@ def main():
 if __name__ == "__main__":
     main()
 ////////////////////////////
-
 #!/usr/bin/env python3
 """
-AI Support Ticket System - Based on Working Code
+AI Support Ticket System - With Time Slot Selection
 """
 import os
 import uuid
@@ -123,6 +122,16 @@ app.add_middleware(
 )
 
 # --- Constants ---
+# Time slot options for all categories
+TIME_SLOT_OPTIONS = [
+    "9 AM - 12 PM",
+    "12 PM - 3 PM", 
+    "3 PM - 6 PM",
+    "6 PM - 9 PM",
+    "2 PM - 10 PM",
+    "Flexible/Any time"
+]
+
 SOP_DB = {
     "payroll": "If your payroll issue is about salary delay, please check ESS portal first. Contact payroll team if issue persists.",
     "hr": "For HR policy related issues, check the HR handbook on the portal. Escalate to HR for complex matters.",
@@ -136,17 +145,18 @@ SOP_DB = {
     "general": "For general inquiries, check the employee handbook first."
 }
 
+# Updated MANDATORY_FIELDS - All categories have common attributes: employee_id, issue_description, preferred_time_slot
 MANDATORY_FIELDS = {
-    "payroll": ["employee_id", "issue_description", "pay_period"],
-    "hr": ["employee_id", "issue_description"],
-    "it": ["employee_id", "issue_description"],
-    "facilities": ["employee_id", "issue_description"],
-    "finance": ["employee_id", "issue_description"],
-    "security": ["employee_id", "issue_description"],
-    "training": ["employee_id", "issue_description"],
-    "travel": ["employee_id", "issue_description"],
-    "procurement": ["employee_id", "issue_description"],
-    "general": ["employee_id", "issue_description"],
+    "payroll": ["employee_id", "issue_description", "preferred_time_slot"],
+    "hr": ["employee_id", "issue_description", "preferred_time_slot"],
+    "it": ["employee_id", "issue_description", "preferred_time_slot"],
+    "facilities": ["employee_id", "issue_description", "preferred_time_slot"],
+    "finance": ["employee_id", "issue_description", "preferred_time_slot"],
+    "security": ["employee_id", "issue_description", "preferred_time_slot"],
+    "training": ["employee_id", "issue_description", "preferred_time_slot"],
+    "travel": ["employee_id", "issue_description", "preferred_time_slot"],
+    "procurement": ["employee_id", "issue_description", "preferred_time_slot"],
+    "general": ["employee_id", "issue_description", "preferred_time_slot"],
 }
 
 # --- Pydantic Models ---
@@ -189,6 +199,12 @@ def ask_user_to_choose_category(ordered_categories: List[str]) -> str:
     return f"Please type one of the following categories:\n{opts}"
 
 @tool
+def ask_for_time_slot_selection() -> str:
+    """Asks the user to select their preferred time slot from available options."""
+    slots = "\n".join([f"{i+1}. {slot}" for i, slot in enumerate(TIME_SLOT_OPTIONS)])
+    return f"Please select your preferred time slot by typing the number or the full time slot:\n\n{slots}\n\nType the number (1-{len(TIME_SLOT_OPTIONS)}) or the full time slot text:"
+
+@tool
 def ask_for_next_required_field(category: str, collected_fields: Dict[str, str]) -> str:
     """Asks the user for the next required field for the given category that has not been collected yet."""
     if not category or category not in MANDATORY_FIELDS:
@@ -197,7 +213,10 @@ def ask_for_next_required_field(category: str, collected_fields: Dict[str, str])
     required = MANDATORY_FIELDS[category]
     for field in required:
         if field not in collected_fields:
-            return f"Please provide your {field.replace('_', ' ').title()}:"
+            if field == "preferred_time_slot":
+                return "TIME_SLOT_REQUIRED"  # Signal that time slot selection is needed
+            else:
+                return f"Please provide your {field.replace('_', ' ').title()}:"
     
     return "All required fields have been collected. Now, please show the ticket summary."
 
@@ -226,7 +245,9 @@ def end_conversation(message: str) -> str:
 
 # --- LangGraph App Creation ---
 def create_langgraph_app():
-    system_prompt = """You are an expert AI assistant for a corporate support ticketing system. Your goal is to guide the user through creating a support ticket by calling the correct tools in sequence.
+    system_prompt = f"""You are an expert AI assistant for a corporate support ticketing system. Your goal is to guide the user through creating a support ticket by calling the correct tools in sequence.
+    
+    **Available Time Slots:** {', '.join(TIME_SLOT_OPTIONS)}
     
     **State Awareness:**
     At the beginning of each turn, you are given the CURRENT `category`, `ordered_categories`, and `collected_fields`.
@@ -239,12 +260,14 @@ def create_langgraph_app():
     4.  **User denies category ("no"):** Your next action is `ask_user_to_choose_category` with ordered_categories.
     5.  **User provides a new category:** Update the state and then go back to step 2 to confirm the new category.
     6.  **Collecting Fields:** After the user provides a value for a field, call `ask_for_next_required_field` again to get the next one.
-    7.  **Final Confirmation:** Once all fields are collected, call `show_ticket_summary_and_ask_for_final_confirmation`.
-    8.  **Submit or Cancel:** Based on user input, call either `submit_ticket` or `end_conversation`.
-    9.  **User denies initial ticket creation:** If the user says "no" at step 1, call `end_conversation`.
+    7.  **Time Slot Selection:** When you need to collect the time slot, call `ask_for_time_slot_selection`.
+    8.  **Final Confirmation:** Once all fields are collected, call `show_ticket_summary_and_ask_for_final_confirmation`.
+    9.  **Submit or Cancel:** Based on user input, call either `submit_ticket` or `end_conversation`.
+    10. **User denies initial ticket creation:** If the user says "no" at step 1, call `end_conversation`.
     
     **IMPORTANT RULES:**
     - You MUST call a tool at every step. Do not respond directly.
+    - For time slot selection, users can provide either the number (1-{len(TIME_SLOT_OPTIONS)}) or the full text.
     - `submit_ticket` and `end_conversation` are terminal steps.
     """
     
@@ -252,6 +275,7 @@ def create_langgraph_app():
     tools = [
         get_sop_and_ask_to_create_ticket, ask_for_category_confirmation,
         ask_user_to_choose_category, ask_for_next_required_field,
+        ask_for_time_slot_selection,  # Added back time slot tool
         show_ticket_summary_and_ask_for_final_confirmation, submit_ticket,
         end_conversation,
     ]
@@ -260,7 +284,30 @@ def create_langgraph_app():
     
     def agent_node(state: AgentState):
         """The primary node that calls the LLM to decide the next action."""
-        # Build state context (similar to your working code)
+        # Check if we need to trigger time slot selection
+        last_tool_message = None
+        for msg in reversed(state.get('messages', [])):
+            if isinstance(msg, ToolMessage):
+                last_tool_message = msg
+                break
+        
+        # If the last tool message indicates time slot is required, call the time slot tool
+        if (last_tool_message and 
+            last_tool_message.name == 'ask_for_next_required_field' and 
+            "TIME_SLOT_REQUIRED" in last_tool_message.content):
+            
+            # Directly call time slot selection tool
+            response = AIMessage(
+                content="",
+                tool_calls=[{
+                    'name': 'ask_for_time_slot_selection',
+                    'args': {},
+                    'id': f'call_{uuid.uuid4().hex[:8]}'
+                }]
+            )
+            return {"messages": [response]}
+        
+        # Regular agent logic (similar to your working code)
         state_context = (
             f"This is your current memory of the conversation. Use it to decide your next action:\n"
             f"<state>\n"
@@ -312,11 +359,29 @@ def create_langgraph_app():
                     collected_fields = {}  # Reset fields for new category
                     break
         
+        # Handle time slot selection
+        elif prompting_tool_name == 'ask_for_time_slot_selection':
+            try:
+                # Check if user provided a number
+                if user_input.isdigit():
+                    slot_index = int(user_input) - 1
+                    if 0 <= slot_index < len(TIME_SLOT_OPTIONS):
+                        collected_fields["preferred_time_slot"] = TIME_SLOT_OPTIONS[slot_index]
+                else:
+                    # Check if user provided the full text or partial match
+                    user_input_lower = user_input.lower()
+                    for slot in TIME_SLOT_OPTIONS:
+                        if user_input_lower == slot.lower() or user_input in slot:
+                            collected_fields["preferred_time_slot"] = slot
+                            break
+            except (ValueError, IndexError):
+                pass  # Invalid input, don't update field
+        
         # Handle field collection  
         elif prompting_tool_name == 'ask_for_next_required_field':
             required = MANDATORY_FIELDS.get(category, [])
             for field in required:
-                if field not in collected_fields:
+                if field not in collected_fields and field != "preferred_time_slot":
                     collected_fields[field] = user_input
                     break
         
@@ -397,7 +462,12 @@ def create_langgraph_app():
 langgraph_app = create_langgraph_app()
 active_sessions = {}
 
-# --- API Endpoint ---
+# --- API Endpoints ---
+@app.get("/time-slots")
+async def get_time_slots():
+    """Get available time slot options."""
+    return {"time_slots": TIME_SLOT_OPTIONS}
+
 @app.post("/chat")
 async def chat(request: ConversationRequest):
     """Single endpoint for conversation handling"""
@@ -439,3 +509,4 @@ async def chat(request: ConversationRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
