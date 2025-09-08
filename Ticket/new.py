@@ -463,11 +463,6 @@ langgraph_app = create_langgraph_app()
 active_sessions = {}
 
 # --- API Endpoints ---
-@app.get("/time-slots")
-async def get_time_slots():
-    """Get available time slot options."""
-    return {"time_slots": TIME_SLOT_OPTIONS}
-
 @app.post("/chat")
 async def chat(request: ConversationRequest):
     """Single endpoint for conversation handling"""
