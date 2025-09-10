@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.checkpoint.memory import InMemorySaver
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from fastapi.middleware.cors import CORSMiddleware
  
@@ -166,7 +167,11 @@ def create_langgraph_app():
             MessagesPlaceholder(variable_name="messages"),
         ]
     )
- 
+    Ilmv2 = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    temperature=0,
+    google_api_key=os.getenv("GOOGLE_API_KEY")
+    )
     # Replace Gemini LLM with Ilmv2
     # NOTE: Ensure Ilmv2 is imported and initialized in your project.
     agent_model = Ilmv2.bind_tools(tools, parallel_tool_calls=False)
@@ -264,55 +269,4 @@ async def chat(request: ConversationRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
- 
- 
----
- 
-Key Changes
- 
-1. Ilmv2 Wrapper Usage
- 
-agent_model = Ilmv2.bind_tools(tools, parallel_tool_calls=False)
- 
- 
-2. Replaced Gemini LLM
- 
-Removed:
- 
-ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0)
- 
-Now directly uses Ilmv2.
- 
- 
- 
-3. create_react_agent
- 
-orchestrator = create_react_agent(
-    model=agent_model,
-    tools=tools,
-    name="Orchestrator",
-    prompt=prompt,
-    checkpointer=checkpointer,
-    store=None
-)
- 
- 
- 
- 
----
- 
-Invoking the Agent
- 
-Example:
- 
-user_msg = HumanMessage(content="I have an IT issue with my laptop not starting.")
-config = {"configurable": {"thread_id": "session123"}}
- 
-response = langgraph_app.invoke({"messages": [user_msg]}, config=config)
-print(response)
- 
- 
----
- 
-This version now fully supports Ilmv2 as your LLM backend while maintaining the same conversation flow.
  
